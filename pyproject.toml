@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MBTools"
+version = "0.0.1"
+authors = [
+  { name="Liviu-Iulian Rotaru", email="liviu.iulian.rotaru@gmail.com" },
+]
+description = "A smalle package for diamond annotations"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "pandas",
+  "tqdm"
+]
+[project.scripts]
+MBTools = "MBTools.main:main"
