@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gene Visualization Report</title>
+    <!-- Bootstrap CSS for styling -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css"
+        integrity="sha384-rbsA2VBKQ7gtaR77j7GOmeASpSnSb1O3QdQ8kH+uaoYjzIB2xM0x0JwV+8WvCJMxQ" crossorigin="anonymous" />
+    <!-- Custom CSS -->
+    <!-- <link rel="stylesheet" href="styles.css" /> -->
+    <style>
+        /* Hide the raw CSV data block */
+        #csvdata {
+            display: none;
+        }
+
+        /* Tooltip styling */
+        #tooltip {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            /* Semi-transparent black */
+            color: #f0f0f0;
+            /* Light text for contrast */
+            padding: 10px 15px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            box-sizing: border-box;
+            z-index: 1000;
+            min-height: 40px;
+            /* Ensures it’s always visible */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Gene shape styling */
+        .gene-shape {
+            stroke: #333;
+            stroke-width: 1;
+        }
+
+        .gene-label {
+            pointer-events: none;
+            /* allow mouse events to pass through text to shape below */
+            font-size: 0.8rem;
+            fill: #000;
+        }
+
+        /* Global typography settings */
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            /* Clean, professional sans-serif font */
+            font-size: 16px;
+            /* Base font size for body text */
+            line-height: 1.5;
+            /* Comfortable line spacing for readability */
+            color: #333;
+            /* Dark gray text instead of pure black for softer contrast */
+            background-color: #fafafa;
+            /* Light grey background for a subtle contrast with white tooltip text */
+            margin: 0;
+            padding-bottom: 3.5em;
+            /* Space at bottom so content isn't hidden behind fixed tooltip */
+        }
+
+        /* Headings hierarchy */
+        h1,
+        h2,
+        h3,
+        h4 {
+            font-family: "Segoe UI", Arial, sans-serif;
+            /* Same font family for consistency */
+            font-weight: 600;
+            /* Semi-bold for prominence */
+            color: #222;
+            /* Slightly darker for headings */
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+
+        h1 {
+            font-size: 2em;
+        }
+
+        h2 {
+            font-size: 1.5em;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            /* center the container if it's a fixed-width layout */
+            padding: 1rem 2rem;
+            /* add padding inside the container */
+        }
+
+        .legend,
+        .controls {
+            margin: 1em 0;
+            /* space out any legend or control section */
+        }
+
+        a {
+            color: #0066cc;
+            /* Link color (accent blue) */
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .button {
+            /* Example button class styling */
+            background-color: #0066cc;
+            color: #fff;
+            border: none;
+            padding: 0.5em 1em;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .button:hover {
+            background-color: #005bb5;
+            /* Darken on hover */
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+    <div class="container my-4">
+        <main>
+            <h1 class="mb-4">Interactive Gene Visualization</h1>
+            <p>This interactive chart displays genes from a CSV file as color-coded arrows grouped by Zone, Contig, and
+                Sample. Hover over a gene to see detailed information.</p>
+
+            <!-- Chart container -->
+            <div id="chart" class="border p-2 position-relative" style="overflow-x:auto;">
+                <!-- The D3 script will append SVG elements here -->
+            </div>
+
+            <!-- Tooltip (hidden by default) -->
+            <div id="tooltip"></div>
+        </main>
+        <!-- Embedded CSV data (replace with actual data or omit if loading externally) -->
+        <pre id="csvdata" style="color: transparent; font-size: 1px; line-height: 0; height: 0;">
+        {{ df }}
+    </pre>
+
+    </div> <!-- /.container -->
+
+    <!-- D3.js library -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Custom script -->
+    <script>
+
+        const tooltip = document.getElementById('tooltip');
+
+        // Set default message
+        tooltip.innerHTML = "Hover over a gene to see details.";
+
+        document.querySelectorAll('.gene').forEach(geneElement => {
+            geneElement.addEventListener('mouseenter', (event) => {
+                const geneData = event.target.dataset;
+                tooltip.innerHTML = `<strong>${geneData.name}</strong>: ${geneData.info}`;
+            });
+
+            geneElement.addEventListener('mouseleave', () => {
+                tooltip.innerHTML = "Hover over a gene to see details."; // Default message when no hover
+            });
+        });
+
+        // Parse CSV data from the <pre> element
+        const rawCSV = d3.select("#csvdata").text().trim();
+        const data = d3.csvParse(rawCSV);
+        data.forEach(d => {
+            d.DrawStart = +d.DrawStart;
+            d.DrawStop = +d.DrawStop;
+            if (d.ZoneID !== undefined) {
+                const zoneNum = +d.ZoneID;
+                d.ZoneID = isNaN(zoneNum) ? d.ZoneID : zoneNum;
+            }
+        });
+
+        // Sort by Sample, then Contig, then ZoneID, then Start
+        data.sort((a, b) => {
+            if (a.Sample !== b.Sample) return d3.ascending(a.Sample, b.Sample);
+            if (a.Contig !== b.Contig) return d3.ascending(a.Contig, b.Contig);
+            if (a.ZoneID !== b.ZoneID) return d3.ascending(a.ZoneID, b.ZoneID);
+            return d3.ascending(a.DrawStart, b.DrawStart);
+        });
+
+        // Group by Sample
+        const samples = d3.group(data, d => d.Sample);
+
+        // Category colors
+        const categoryColors = {
+            "CategoryX": "#66c2a5",
+            "CategoryY": "#fc8d62",
+            "CategoryZ": "#8da0cb"
+        };
+        const defaultColor = "#cccccc";
+
+        // Decide text color
+        function getTextColor(bgColor) {
+            const c = bgColor.replace("#", "");
+            const r = parseInt(c.substring(0, 2), 16),
+                g = parseInt(c.substring(2, 4), 16),
+                b = parseInt(c.substring(4, 6), 16);
+            const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            return luminance < 140 ? "#fff" : "#000";
+        }
+
+        // Layout settings
+        const scaleFactor = 0.1;
+        const geneHeight = 20;
+        const rowSpacing = 30;
+        const labelMargin = 120;
+
+        const chart = d3.select("#chart");
+
+        // For each Sample
+        for (const [sampleName, sampleGenes] of samples) {
+            chart.append("h2").text(`Sample: ${sampleName}`);
+
+            // Group by Contig
+            const contigs = d3.group(sampleGenes, d => d.Contig);
+            for (const [contigName, contigGenes] of contigs) {
+                chart.append("h3").text(`Contig: ${contigName}`);
+
+                // Group by ZoneID
+                const zones = d3.group(contigGenes, d => d.ZoneID);
+
+                let maxBpSpan = 0;
+                zones.forEach(zGenes => {
+                    const minPos = d3.min(zGenes, d => d.DrawStart);
+                    const maxPos = d3.max(zGenes, d => d.DrawStop);
+                    const span = maxPos - minPos;
+                    if (span > maxBpSpan) maxBpSpan = span;
+                });
+
+                const svgWidth = labelMargin + maxBpSpan * scaleFactor + 50;
+                const svgHeight = zones.size * rowSpacing;
+                const svg = chart.append("svg")
+                    .attr("width", svgWidth)
+                    .attr("height", svgHeight)
+                    .style("margin-bottom", "40px");
+
+                let rowIndex = 0;
+                for (const [zoneID, zoneGenes] of zones) {
+                    zoneGenes.sort((a, b) => d3.ascending(a.DrawStart, b.DrawStart));
+                    const minPos = d3.min(zoneGenes, d => d.DrawStart);
+
+                    // Row group
+                    const rowGroup = svg.append("g")
+                        .attr("transform", `translate(0, ${rowIndex * rowSpacing})`);
+
+                    // Label on the left
+                    rowGroup.append("text")
+                        .attr("x", labelMargin - 10)
+                        .attr("y", geneHeight / 2)
+                        .attr("text-anchor", "end")
+                        .attr("dominant-baseline", "middle")
+                        .text(`Zone ${zoneID}`);
+
+                    // Genes group
+                    const genesGroup = rowGroup.append("g")
+                        .attr("transform", `translate(${labelMargin}, 0)`);
+
+                    zoneGenes.forEach(gene => {
+                        const geneLength = gene.DrawStop - gene.DrawStart;
+                        const x = (gene.DrawStart - minPos) * scaleFactor;
+                        const width = Math.max(geneLength * scaleFactor, 1);
+                        const arrowW = Math.min(10, width * 0.5);
+                        const h = geneHeight;
+
+                        let points;
+                        if (gene.Strand === "-" || gene.Strand === "minus" || gene.Strand === "-1") {
+                            points = [
+                                [x, h / 2],
+                                [x + arrowW, 0],
+                                [x + width, 0],
+                                [x + width, h],
+                                [x + arrowW, h]
+                            ];
+                        } else {
+                            points = [
+                                [x, 0],
+                                [x + width - arrowW, 0],
+                                [x + width, h / 2],
+                                [x + width - arrowW, h],
+                                [x, h]
+                            ];
+                        }
+
+                        const color = categoryColors[gene.Category] || defaultColor;
+                        const textColor = getTextColor(color);
+
+                        genesGroup.append("polygon")
+                            .attr("points", points.map(p => p.join(",")).join(" "))
+                            .attr("fill", color)
+                            .on("mouseover", function (event) {
+                                d3.select("#tooltip")
+                                    .style("visibility", "visible")
+                                    .html(
+                                        `<strong>${gene.Gene}</strong><br/>
+                 Zone: ${gene.ZoneID}<br/>
+                 Sample: ${gene.Sample}<br/>
+                 Contig: ${gene.Contig}<br/>
+                 Category: ${gene.Category}<br/>
+                 Start-Stop: ${gene.Start}–${gene.Stop}<br/>
+                 Strand: ${gene.Strand}`
+                                    );
+                            })
+                            .on("mousemove", function (event) {
+                                d3.select("#tooltip")
+                                    .style("left", (event.pageX + 10) + "px")
+                                    .style("top", (event.pageY + 10) + "px");
+                            })
+                            .on("mouseout", function () {
+                                d3.select("#tooltip").style("visibility", "hidden");
+                            })
+                            .on("mousemove", function (event) {
+                                d3.select("#tooltip")
+                                    .style("left", "50%")       // Always center horizontally
+                                    .style("transform", "translateX(-50%)"); // Center properly
+                            });
+
+                        genesGroup.append("text")
+                            .attr("x", x + width / 2)
+                            .attr("y", h / 2)
+                            .attr("text-anchor", "middle")
+                            .attr("dominant-baseline", "middle")
+                            .text(gene.Gene)
+                            .style("fill", textColor);
+                    });
+
+                    rowIndex++;
+                }
+            }
+        }
+
+    </script>
+</body>
+
+</html>
